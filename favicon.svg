@@ -1,0 +1,11 @@
+<!-- favicon.svg — new file at project root -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="1" x2="0.5" y2="0.134">
+      <stop offset="0" stop-color="#F5A9B8"></stop>
+      <stop offset="1" stop-color="#5BCEFA"></stop>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="52" height="52" rx="10" fill="url(#g)"></rect>
+  <rect x="14" y="18" width="36" height="28" rx="6" fill="rgba(255,255,255,0.75)"></rect>
+</svg>
