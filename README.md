@@ -17,10 +17,11 @@ then, on a WebHID-capable browser (e.g. Chrome or Edge), go to `localhost:<port 
 ## Implemented
 1. Keymaps
 2. Actuation points
-3. Rapid Trigger toggle
-4. Rapid Trigger thresholds
-5. SnapTap settings
-6. Preset JSON config files
+3. Rotary Encoder (knob) keymaps
+4. Rapid Trigger toggle
+5. Rapid Trigger thresholds
+6. SnapTap settings
+7. Preset JSON config files
 
 ## TODO
 1. Maybe implement custom layouts? Currently the layout is hardcoded into `script.js`.
