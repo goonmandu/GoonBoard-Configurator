@@ -7,10 +7,19 @@ const keycodes = {"0":"-","1":"rollov","2":"postfl","3":"undef","4":"a","5":"b",
 
 /* Helper functions */
 const nameToCode = (() => {
-  const m = {};
-  for (const [code, name] of Object.entries(keycodes)) m[name.toLowerCase()] = parseInt(code, 10);
+  const m = Object.create(null);
+  for (const [code, name] of Object.entries(keycodes)) {
+    m[String(name).toLowerCase()] = parseInt(code, 10);
+  }
+  m['-'] = 0; // placeholder maps to 0
   return m;
 })();
+
+function keyNameFromCode(code) {
+  if (!Number.isFinite(code)) return '?';
+  const n = (code & 0xff).toString();
+  return keycodes[n] ?? '?';
+}
 
 function getScale() {
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--scale').trim();
@@ -26,13 +35,17 @@ function setPreviewLock(lock) {
   stBEnTop.disabled = dis;
   document.getElementById('rt-th-input').disabled = dis;
   document.getElementById('rt-sc-input').disabled = dis;
+  rtSaveBtn.disabled   = dis;
+  stSaveABtn.disabled  = dis;
+  stSaveBBtn.disabled  = dis;
 }
 
 /* Current (device) state, flattened 96 */
 const MAX_KEYS_PER_ROW = 16;
 let keymap     = Array(96).fill(NaN);
 let actuations = Array(96).fill(NaN);
-let thresholds = Array(2).fill(NaN);
+let rotary     = Array(3).fill(NaN);
+let thresholds = Array(3).fill(NaN);
 let snaptap    = Array(6).fill(NaN);
 
 /* Grid */
@@ -178,7 +191,50 @@ function renderGrid() {
     if (rowIdx === 0) {
       const circle = document.createElement('div');
       circle.className = 'circle';
-      circle.textContent = 'knob';
+      circle.title = 'Rotary Encoder';
+
+      // show preview if present, otherwise current device values
+      const usePreview = !!(parsedForUpload && Array.isArray(parsedForUpload.rotaryCodes));
+      const src = usePreview ? parsedForUpload.rotaryCodes : rotary; // [ccw, cw, pb]
+
+      const top = document.createElement('div');
+      if (usePreview) {
+        top.className = 'rotary-label rotary-top-preview';
+        top.textContent = `(${keyNameFromCode(src[1])})`; // CW on top
+      }
+      else {
+        top.className = 'rotary-label rotary-top';
+        top.textContent = keyNameFromCode(src[1]); // CW on top
+      }
+
+      const mid = document.createElement('div');
+      if (usePreview) {
+        mid.className = 'rotary-label rotary-mid-preview';
+        mid.textContent = `(${keyNameFromCode(src[2])})`; // PB middle
+      }
+      else {
+        mid.className = 'rotary-label rotary-mid';
+        mid.textContent = keyNameFromCode(src[2]); // PB middle
+      }
+      
+
+      const bot = document.createElement('div');
+      if (usePreview) {
+        bot.className = 'rotary-label rotary-bot-preview';
+        bot.textContent = `(${keyNameFromCode(src[0])})`; // CCW bottom
+      }
+      else {
+        bot.className = 'rotary-label rotary-bot';
+        bot.textContent = keyNameFromCode(src[0]); // CCW bottom
+      }
+
+      circle.appendChild(top);
+      circle.appendChild(mid);
+      circle.appendChild(bot);
+
+      circle.style.cursor = 'pointer';
+      circle.onclick = () => createRotaryPopup(circle);
+
       row.appendChild(circle);
     }
 
@@ -372,6 +428,95 @@ function showActuationEditor(rowIdx, colIdx, container) {
   container.appendChild(saveBtn);
 }
 
+function createRotaryPopup(anchorEl) {
+  removeEditPopup();
+  const popup = document.createElement('div');
+  popup.className = 'edit-popup';
+
+  const r1 = document.createElement('div'); r1.className = 'popup-row';
+  const cwBtn = document.createElement('button');
+  cwBtn.textContent = 'Edit CW';
+  cwBtn.onclick = () => showRotaryEditor('cw', popup);
+  r1.appendChild(cwBtn);
+
+  const r2 = document.createElement('div'); r2.className = 'popup-row';
+  const pbBtn = document.createElement('button');
+  pbBtn.textContent = 'Edit Button';
+  pbBtn.onclick = () => showRotaryEditor('pb', popup);
+  r2.appendChild(pbBtn);
+
+  const r3 = document.createElement('div'); r3.className = 'popup-row';
+  const ccwBtn = document.createElement('button');
+  ccwBtn.textContent = 'Edit CCW';
+  ccwBtn.onclick = () => showRotaryEditor('ccw', popup);
+  r3.appendChild(ccwBtn);
+
+  popup.appendChild(r1);
+  popup.appendChild(r2);
+  popup.appendChild(r3);
+  document.body.appendChild(popup);
+
+  const rect = anchorEl.getBoundingClientRect();
+  const pr = popup.getBoundingClientRect();
+  const centerX = rect.left + window.scrollX + rect.width / 2;
+  const centerY = rect.top + window.scrollY + rect.height / 2;
+  popup.style.left = `${centerX - pr.width / 2}px`;
+  popup.style.top  = `${centerY - pr.height / 2}px`;
+
+  setTimeout(() => {
+    const outside = (e) => {
+      if (!popup.contains(e.target)) {
+        popup.remove();
+        document.removeEventListener('mousedown', outside);
+      }
+    };
+    document.addEventListener('mousedown', outside);
+  }, 0);
+}
+
+function showRotaryEditor(which, container) {
+  container.innerHTML = '';
+  const select = document.createElement('select');
+
+  for (const [code, label] of Object.entries(keycodes)) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = `${code}: ${label}`;
+    select.appendChild(opt);
+  }
+
+  // preselect current
+  const current = which === 'ccw' ? rotary[0] : which === 'cw' ? rotary[1] : rotary[2];
+  if (Number.isFinite(current)) select.value = String(current & 0xff);
+
+  const save = document.createElement('button');
+  save.textContent = 'Save';
+  save.onclick = async () => {
+    const code = parseInt(select.value, 10) & 0xff;
+    const ccw = which === 'ccw' ? code : (rotary[0] | 0);
+    const cw  = which === 'cw'  ? code : (rotary[1] | 0);
+    const pb  = which === 'pb'  ? code : (rotary[2] | 0);
+
+    try {
+      await KeyboardConfig.editRotary(ccw, cw, pb);
+      const cfg = await KeyboardConfig.fetchFromDevice();
+      rotary     = Array.from(cfg.rotary);
+      keymap     = Array.from(cfg.keymap);
+      actuations = Array.from(cfg.actuations);
+      thresholds = Array.from(cfg.thresholds);
+      snaptap    = Array.from(cfg.snaptap);
+      removeEditPopup();
+      renderGrid();
+      renderAdvanced();
+    } catch (e) {
+      console.error('editRotary failed:', e);
+    }
+  };
+
+  container.appendChild(select);
+  container.appendChild(save);
+}
+
 
 btnFetch.addEventListener('click', async () => {
   try {
@@ -380,8 +525,10 @@ btnFetch.addEventListener('click', async () => {
     btnExport.disabled = false;
 
     const cfg = await KeyboardConfig.fetchFromDevice();
+    console.log(cfg)
     keymap     = Array.from(cfg.keymap);
     actuations = Array.from(cfg.actuations);
+    rotary     = Array.from(cfg.rotary);
     thresholds = Array.from(cfg.thresholds);
     snaptap    = Array.from(cfg.snaptap);
 
@@ -489,6 +636,9 @@ btnUpload.addEventListener('click', async () => {
   if (!parsedForUpload) return;
   if (!confirm('Upload configuration to the keyboard?')) return;
 
+  setPreviewLock(true);
+  btnUpload.disabled = true;
+
   const prevLabel = btnUpload.textContent;
   btnUpload.textContent = 'Uploading...';
   btnUpload.disabled = true;
@@ -496,7 +646,7 @@ btnUpload.addEventListener('click', async () => {
   btnFetch.disabled = true;
 
   try {
-    const { rows, keys, codes2D, acts2D, thresholds: rt, snaptapA, snaptapB } = parsedForUpload;
+    const { rows, keys, codes2D, acts2D, rotaryCodes, thresholds: rt, snaptapA, snaptapB } = parsedForUpload;
 
     // keymap + actuation
     for (let r = 0; r < rows; r++) {
@@ -505,6 +655,9 @@ btnUpload.addEventListener('click', async () => {
         await KeyboardConfig.editActuation(r, c, Math.round(acts2D[r][c] * 10));
       }
     }
+
+    // rotary encoder
+    await KeyboardConfig.editRotary(rotaryCodes[0] & 0xff, rotaryCodes[1] & 0xff, rotaryCodes[2] & 0xff);
 
     // rapid trigger
     await KeyboardConfig.editRapidTrigger(
@@ -606,101 +759,123 @@ stSaveBBtn.addEventListener('click', async () => {
   }
 });
 
-/* Validation (same as before) */
-function validateExternalConfig(obj) {
-  if (obj.scheme !== 'keycodes' && obj.scheme !== 'keynames') {
-    throw new Error(`scheme must be "keycodes" or "keynames"`);
+/* JSON Validation */
+function validateExternalConfig(cfg) {
+  if (!cfg || (cfg.scheme !== 'keynames' && cfg.scheme !== 'keycodes')) {
+    throw new Error('scheme must be "keynames" or "keycodes"');
   }
-  if (!Number.isInteger(obj.rows) || obj.rows < 1 || obj.rows > 6) {
-    throw new Error(`rows must be an integer from 1 to 6`);
-  }
-  const rows = obj.rows;
+  const rows = cfg.rows | 0;
+  if (!(rows >= 1 && rows <= 6)) throw new Error('rows must be 1..6');
 
-  if (!Array.isArray(obj.keys) || obj.keys.length !== rows) {
-    throw new Error(`keys must be an array of length ${rows}`);
+  if (!Array.isArray(cfg.keys) || cfg.keys.length !== rows) {
+    throw new Error('"keys" must be an array of length = rows');
   }
-  const keys = obj.keys.map(v => {
-    if (!Number.isInteger(v) || !(v > 0 && v < 16)) throw new Error(`keys entries must satisfy 0 < e < 16`);
+  const keys = cfg.keys.map((n) => {
+    const v = n | 0;
+    if (!(v > 0 && v <= 16)) throw new Error('each keys[] must be 1..16');
     return v;
   });
 
-  if (typeof obj.keymap !== 'object' || obj.keymap === null) throw new Error(`keymap must be an object`);
+  // keymap + actuations
   const codes2D = [];
+  const acts2D  = [];
   for (let r = 0; r < rows; r++) {
-    const rowKey = `row${r}`;
-    const arr = obj.keymap[rowKey];
-    if (!Array.isArray(arr) || arr.length !== keys[r] || arr.length > 16) {
-      throw new Error(`keymap.${rowKey} must be an array of length ${keys[r]} (<=16)`);
+    const km = cfg.keymap?.[`row${r}`];
+    const ac = cfg.actuations?.[`row${r}`];
+    if (!Array.isArray(km) || !Array.isArray(ac)) {
+      throw new Error(`row${r} missing in keymap/actuations`);
     }
-    const allNums = arr.every(v => typeof v === 'number');
-    const allStrs = arr.every(v => typeof v === 'string');
-    if (!(allNums || allStrs) || (obj.scheme === 'keycodes' && !allNums) || (obj.scheme === 'keynames' && !allStrs)) {
-      throw new Error(`keymap.${rowKey} must be homogeneous and match scheme`);
+    if (km.length !== ac.length || km.length > keys[r]) {
+      throw new Error(`row${r} lengths mismatch or exceed keys[r]`);
     }
-    if (obj.scheme === 'keycodes') {
-      const rowCodes = arr.map(n => {
-        const ok = Number.isInteger(n) && n >= 0 && n <= 255;
-        if (!ok) throw new Error(`keymap.${rowKey} code out of range: ${n}`);
-        return n;
-      });
-      codes2D.push(rowCodes);
-    } else {
-      const rowCodes = arr.map(s => {
-        const code = nameToCode[String(s).toLowerCase()];
-        if (code === undefined) throw new Error(`Unknown key name in ${rowKey}: "${s}"`);
+
+    // map keynames → codes or validate codes
+    if (cfg.scheme === 'keynames') {
+      const rowCodes = km.map((s) => {
+        if (typeof s !== 'string') throw new Error(`row${r} key not string`);
+        const code = nameToCode[s.toLowerCase()];
+        if (!Number.isInteger(code)) throw new Error(`unknown keyname "${s}" in row${r}`);
         return code;
       });
       codes2D.push(rowCodes);
+    } else {
+      const rowCodes = km.map((n) => {
+        const v = n | 0;
+        if (!(v >= 0 && v <= 255)) throw new Error(`row${r} keycode out of range`);
+        return v;
+      });
+      codes2D.push(rowCodes);
     }
-  }
 
-  if (typeof obj.actuations !== 'object' || obj.actuations === null) {
-    throw new Error(`actuations must be an object`);
-  }
-  const acts2D = [];
-  for (let r = 0; r < rows; r++) {
-    const rowKey = `row${r}`;
-    const arr = obj.actuations[rowKey];
-    if (!Array.isArray(arr) || arr.length !== keys[r] || arr.length > 16) {
-      throw new Error(`actuations.${rowKey} must be an array of length ${keys[r]} (<=16)`);
-    }
-    const rowActs = arr.map(v => {
-      const n = Number(v);
-      if (!(n > 0 && n < 3.5)) throw new Error(`actuations.${rowKey} values must satisfy 0 < e < 3.5`);
-      return n;
+    const rowActs = ac.map((v) => {
+      const x = Number(v);
+      if (!(x > 0 && x < 3.5)) throw new Error(`row${r} actuation must be 0 < v < 3.5`);
+      return +x.toFixed(1);
     });
     acts2D.push(rowActs);
   }
 
-  if (typeof obj.rapid_trigger !== 'object' || obj.rapid_trigger === null) {
-    throw new Error(`rapid_trigger must be an object`);
+  // rotary
+  if (!Array.isArray(cfg.rotary) || cfg.rotary.length !== 3) {
+    throw new Error('rotary must be an array of 3 items [ccw, cw, pb]');
   }
-  const rt = {
-    enabled: Boolean(obj.rapid_trigger.enabled),
-    rt_threshold: Number(obj.rapid_trigger.rt_threshold),
-    rt_sc_threshold: Number(obj.rapid_trigger.rt_sc_threshold)
+  const rotaryCodes = (cfg.scheme === 'keynames')
+    ? cfg.rotary.map((s, i) => {
+        if (typeof s !== 'string') throw new Error('rotary entries must be strings for keynames');
+        const code = nameToCode[s.toLowerCase()];
+        if (!Number.isInteger(code)) throw new Error(`unknown rotary keyname "${s}" at index ${i}`);
+        return code;
+      })
+    : cfg.rotary.map((n) => {
+        const v = n | 0;
+        if (!(v >= 0 && v <= 255)) throw new Error('rotary codes must be 0..255');
+        return v;
+      });
+
+  // rapid trigger
+  const rt = cfg.rapid_trigger ?? {};
+  const enabled = !!rt.enabled;
+  const rt_threshold    = Number(rt.rt_threshold);
+  const rt_sc_threshold = Number(rt.rt_sc_threshold);
+  if (!(rt_threshold > 0 && rt_threshold < 3.5))    throw new Error('rt_threshold must be 0 < v < 3.5');
+  if (!(rt_sc_threshold > 0 && rt_sc_threshold < 3.5)) throw new Error('rt_sc_threshold must be 0 < v < 3.5');
+
+  // snaptap modules
+  const stA = cfg.snaptap_a ?? {};
+  const stB = cfg.snaptap_b ?? {};
+  const snapA = {
+    enabled: !!stA.enabled,
+    key1: stA.key1 | 0,
+    key2: stA.key2 | 0,
   };
-  if (!(rt.rt_threshold > 0 && rt.rt_threshold < 3.5)) throw new Error(`rapid_trigger.rt_threshold must satisfy 0 < e < 3.5`);
-  if (!(rt.rt_sc_threshold > 0 && rt.rt_sc_threshold < 3.5)) throw new Error(`rapid_trigger.rt_sc_threshold must satisfy 0 < e < 3.5`);
-
-  function validateSnaptap(name) {
-    const st = obj[name];
-    if (typeof st !== 'object' || st === null) throw new Error(`${name} must be an object`);
-    const enabled = Boolean(st.enabled);
-    const k1 = Number(st.key1), k2 = Number(st.key2);
-    if (!(Number.isInteger(k1) && k1 >= 0 && k1 < 96)) throw new Error(`${name}.key1 out of range`);
-    if (!(Number.isInteger(k2) && k2 >= 0 && k2 < 96)) throw new Error(`${name}.key2 out of range`);
-    return { enabled, key1: k1, key2: k2 };
+  const snapB = {
+    enabled: !!stB.enabled,
+    key1: stB.key1 | 0,
+    key2: stB.key2 | 0,
+  };
+  if (!(snapA.key1 >= 0 && snapA.key1 < 96 && snapA.key2 >= 0 && snapA.key2 < 96)) {
+    throw new Error('snaptap_a key indices must be 0..95');
   }
-  const snaptapA = validateSnaptap('snaptap_a');
-  const snaptapB = validateSnaptap('snaptap_b');
+  if (!(snapB.key1 >= 0 && snapB.key1 < 96 && snapB.key2 >= 0 && snapB.key2 < 96)) {
+    throw new Error('snaptap_b key indices must be 0..95');
+  }
 
-  return { rows, keys, codes2D, acts2D, thresholds: rt, snaptapA, snaptapB };
+  return {
+    scheme: cfg.scheme,
+    rows,
+    keys,
+    codes2D,
+    acts2D,
+    rotaryCodes,
+    thresholds: { enabled, rt_threshold, rt_sc_threshold },
+    snaptapA: snapA,
+    snaptapB: snapB,
+  };
 }
 
 document.getElementById('exportJson').addEventListener('click', () => {
   const rows = NUM_KEYS_PER_ROW.length;
-  const keys = [...NUM_KEYS_PER_ROW];
+  const keys = NUM_KEYS_PER_ROW.map((n, i) => (i === 0 ? n - 1 : n)); // exclude knob from row 0
 
   const keymapOut = {};
   const actsOut   = {};
@@ -721,12 +896,19 @@ document.getElementById('exportJson').addEventListener('click', () => {
     actsOut[`row${r}`]   = rowActs;
   }
 
-  const rt_en  = Number.isNaN(thresholds[0]) ? 0 : thresholds[0];
+  const rt_en  = Number.isNaN(thresholds[0]) ? 0   : thresholds[0];
   const rt_th  = Number.isNaN(thresholds[1]) ? 0.3 : thresholds[1] / 10;
   const rt_sct = Number.isNaN(thresholds[2]) ? 0.3 : thresholds[2] / 10;
 
   const stA = { enabled: !!(snaptap[0] | 0), key1: (snaptap[1] | 0), key2: (snaptap[2] | 0) };
   const stB = { enabled: !!(snaptap[3] | 0), key1: (snaptap[4] | 0), key2: (snaptap[5] | 0) };
+
+  // rotary as keynames [ccw, cw, pb]
+  const rotaryOut = [
+    keycodes[String((rotary[0] | 0) & 0xff)] ?? "-",
+    keycodes[String((rotary[1] | 0) & 0xff)] ?? "-",
+    keycodes[String((rotary[2] | 0) & 0xff)] ?? "-"
+  ];
 
   const out = {
     scheme: "keynames",
@@ -734,6 +916,7 @@ document.getElementById('exportJson').addEventListener('click', () => {
     keys,
     keymap: keymapOut,
     actuations: actsOut,
+    rotary: rotaryOut,
     rapid_trigger: {
       enabled: rt_en ? 1 : 0,
       rt_threshold: +rt_th.toFixed(1),

@@ -1,13 +1,14 @@
-export const VID              = 0x2B00;
-export const PID              = 0xB1E5;
-export const REPORT_ID        = 0xC0;
-export const NUM_ROWS         = 6;
-export const NUM_COLS         = 16;
-export const KEYMAP_SIZE      = NUM_ROWS * NUM_COLS;
-export const ACTUATION_SIZE   = KEYMAP_SIZE;
-export const THRESHOLD_SIZE   = 3;
-export const SNAPTAP_SIZE     = 6;
-export const FULL_CONFIG_SIZE = KEYMAP_SIZE + ACTUATION_SIZE + THRESHOLD_SIZE + SNAPTAP_SIZE;
+export const VID                            = 0x2B00;
+export const PID                            = 0xB1E5;
+export const FETCH_CONFIG_REPORT_ID         = 0xC0;
+export const NUM_ROWS                       = 6;
+export const NUM_COLS                       = 16;
+export const KEYMAP_SIZE                    = NUM_ROWS * NUM_COLS;
+export const ACTUATION_SIZE                 = KEYMAP_SIZE;
+export const ROTARY_SIZE                    = 3;
+export const THRESHOLD_SIZE                 = 3;
+export const SNAPTAP_SIZE                   = 6;
+export const FULL_CONFIG_SIZE               = KEYMAP_SIZE + ACTUATION_SIZE + ROTARY_SIZE + THRESHOLD_SIZE + SNAPTAP_SIZE;
 
 let device = null;
 
@@ -31,9 +32,10 @@ function pace(run) {
 // ----------------------------------------------------------------
 
 export class KeyboardConfig {
-  constructor(keymap, actuations, thresholds, snaptap) {
+  constructor(keymap, actuations, rotary, thresholds, snaptap) {
     this.keymap     = keymap;
     this.actuations = actuations;
+    this.rotary     = rotary;
     this.thresholds = thresholds;
     this.snaptap    = snaptap;
   }
@@ -49,32 +51,31 @@ export class KeyboardConfig {
         return;
     }
     }
-    throw new Error('RawHID interface not found (usagePage 0xFF60, usage 0x61)');
+    throw new Error('RawHID interface not found (2B00:B1E5, usagePage 0xFF60, usage 0x61)');
   }
 
   static async fetchFromDevice() {
     return pace(async () => {
       if (!device) await KeyboardConfig.connectDevice();
       await device.open();
-      const dv = await device.receiveFeatureReport(REPORT_ID);
+      const dv = await device.receiveFeatureReport(FETCH_CONFIG_REPORT_ID);
       await device.close();
 
       const data = new Uint8Array(dv.buffer);
       if (data.length < FULL_CONFIG_SIZE) {
         throw new Error(`Expected ${FULL_CONFIG_SIZE} bytes, got ${data.length}`);
       }
-      // onsole.log(data);
 
       const keymap     = data.slice(1, KEYMAP_SIZE + 1);
       const actuations = data.slice(KEYMAP_SIZE + 1, KEYMAP_SIZE + ACTUATION_SIZE + 1);
+      const rotary     = data.slice(KEYMAP_SIZE + ACTUATION_SIZE + 1, KEYMAP_SIZE + ACTUATION_SIZE + ROTARY_SIZE + 1);
       const thresholds = data.slice(
-        KEYMAP_SIZE + ACTUATION_SIZE + 1,
-        KEYMAP_SIZE + ACTUATION_SIZE + THRESHOLD_SIZE + 1
+        KEYMAP_SIZE + ACTUATION_SIZE + ROTARY_SIZE + 1,
+        KEYMAP_SIZE + ACTUATION_SIZE + ROTARY_SIZE + THRESHOLD_SIZE + 1
       );
       const snaptap    = data.slice(-SNAPTAP_SIZE);
 
-      const ret = new KeyboardConfig(keymap, actuations, thresholds, snaptap);
-      // console.log(ret);
+      const ret = new KeyboardConfig(keymap, actuations, rotary, thresholds, snaptap);
       return ret;
     });
   }
@@ -98,6 +99,18 @@ export class KeyboardConfig {
       await device.sendFeatureReport(
         0xFE,
         new Uint8Array([0xA1, row & 0xff, col & 0xff, mm & 0xff])
+      );
+      await device.close();
+    });
+  }
+
+  static async editRotary(ctclkw, clkw, pb) {
+    return pace(async () => {
+      if (!device) await KeyboardConfig.connectDevice();
+      await device.open();
+      await device.sendFeatureReport(
+        0xFE,
+        new Uint8Array([0xA2, ctclkw & 0xff, clkw & 0xff, pb & 0xff])
       );
       await device.close();
     });

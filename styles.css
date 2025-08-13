@@ -280,3 +280,41 @@ body {
   pointer-events: none;
   opacity: 0.7; /* visual cue */
 }
+
+.circle {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: calc(8px * var(--scale));
+}
+
+.rotary-label {
+  line-height: 1.1;
+}
+.rotary-top {
+  align-self: center;
+  font-size: 1.1rem;
+}
+.rotary-mid {
+  align-self: center;
+  font-size: 1.4rem;
+}
+.rotary-bot {
+  align-self: center;
+  font-size: 1.1rem;
+}
+.rotary-top-preview {
+  align-self: center;
+  font-size: 1.1rem;
+  color: #ff2853;
+}
+.rotary-mid-preview {
+  align-self: center;
+  font-size: 1.4rem;
+  color: #ff2853;
+}
+.rotary-bot-preview {
+  align-self: center;
+  font-size: 1.1rem;
+  color: #ff2853;
+}
