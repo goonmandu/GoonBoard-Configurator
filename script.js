@@ -9,7 +9,8 @@ const keycodes = {"0":"-","1":"rollov","2":"postfl","3":"undef","4":"a","5":"b",
 const nameToCode = (() => {
   const m = Object.create(null);
   for (const [code, name] of Object.entries(keycodes)) {
-    m[String(name).toLowerCase()] = parseInt(code, 10);
+    const lname = String(name).toLowerCase();
+    m[lname] = (lname === 'invalid') ? 0 : parseInt(code, 10);
   }
   m['-'] = 0; // placeholder maps to 0
   return m;
@@ -75,6 +76,9 @@ const rtThInput = document.getElementById('rt-th-input');
 const rtScInput = document.getElementById('rt-sc-input');
 const rtSaveBtn = document.getElementById('rt-save');
 
+const stSaveABtn = document.getElementById('st-save-a');
+const stSaveBBtn = document.getElementById('st-save-b');
+
 btnLoad.disabled = true;
 btnExport.disabled = true;
 
@@ -87,6 +91,42 @@ const stAEnTopLbl = document.getElementById('st-a-en-top').parentElement.querySe
 const stBEnTopLbl = document.getElementById('st-b-en-top').parentElement.querySelector('span');
 
 let rtEnableUI = true; // local UI state for RT enable (device payload lacks an enable bit)
+
+function resetToQuestionMarks() {
+  firstLoad = true;
+  parsedForUpload = null;
+
+  // reset device-driven state
+  keymap     = Array(MAX_KEYS_PER_ROW * NUM_KEYS_PER_ROW.length).fill(NaN);
+  actuations = Array(MAX_KEYS_PER_ROW * NUM_KEYS_PER_ROW.length).fill(NaN);
+  rotary     = Array(3).fill(NaN);
+  thresholds = Array(3).fill(NaN);   // [enabled?, rt_th, rt_sc] if you use 3 bytes
+  snaptap    = Array(6).fill(NaN);
+
+  // UI: unlock + disable actions that need a device/preview
+  setPreviewLock(false);
+  applyTopTogglePreview(false);
+  if (btnLoad)    btnLoad.disabled    = true;
+  if (btnUpload)  btnUpload.disabled  = true;
+  if (btnClear)   btnClear.disabled   = true;
+  if (rtSaveBtn)  rtSaveBtn.disabled  = true;
+  if (stSaveABtn) stSaveABtn.disabled = true;
+  if (stSaveBBtn) stSaveBBtn.disabled = true;
+  if (rtThInput)  rtThInput.disabled  = true;
+  if (rtScInput)  rtScInput.disabled  = true;
+  if (rtEnTop)    rtEnTop.disabled    = true;
+  if (stAEnTop)   stAEnTop.disabled   = true;
+  if (stBEnTop)   stBEnTop.disabled   = true;
+
+  renderGrid();
+  renderAdvanced();
+}
+
+if (navigator.hid && typeof navigator.hid.addEventListener === 'function') {
+  navigator.hid.addEventListener('disconnect', () => {
+    resetToQuestionMarks();
+  });
+}
 
 function applyTopTogglePreview(on) {
   rtEnTopLbl.textContent  = on ? `(${LABEL_RT})`  : LABEL_RT;
@@ -243,7 +283,7 @@ function renderGrid() {
 }
 
 /* First render */
-renderGrid();
+resetToQuestionMarks();
 
 function createEditPopup(rowIdx, colIdx, anchorEl) {
   if (firstLoad) return;
@@ -565,8 +605,8 @@ rtSaveBtn.addEventListener('click', async () => {
 
 function renderAdvanced() {
   rtEnableUI = !!thresholds[0]
-  const thCur = Number.isNaN(thresholds[1]) ? "?" : (thresholds[1] / 10);
-  const scCur = Number.isNaN(thresholds[2]) ? "?" : (thresholds[2] / 10);
+  const thCur = Number.isNaN(thresholds[1]) ? 0 : (thresholds[1] / 10);
+  const scCur = Number.isNaN(thresholds[2]) ? 0 : (thresholds[2] / 10);
 
   if (parsedForUpload && parsedForUpload.thresholds) {
     rtEnTop.checked = !!parsedForUpload.thresholds.enabled;
@@ -721,9 +761,6 @@ stBEnTop.addEventListener('change', async (e) => {
   snaptap = Array.from(cfg.snaptap);
   renderGrid(); renderAdvanced();
 });
-
-const stSaveABtn = document.getElementById('st-save-a');
-const stSaveBBtn = document.getElementById('st-save-b');
 
 stSaveABtn.addEventListener('click', async () => {
   try {
