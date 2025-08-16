@@ -10,7 +10,7 @@ const nameToCode = (() => {
   const m = Object.create(null);
   for (const [code, name] of Object.entries(keycodes)) {
     const lname = String(name).toLowerCase();
-    m[lname] = (lname === 'invalid') ? 0 : parseInt(code, 10);
+    m[lname] = (lname === 'inval') ? 0 : parseInt(code, 10);
   }
   m['-'] = 0; // placeholder maps to 0
   return m;
@@ -125,6 +125,7 @@ function resetToQuestionMarks() {
 if (navigator.hid && typeof navigator.hid.addEventListener === 'function') {
   navigator.hid.addEventListener('disconnect', () => {
     resetToQuestionMarks();
+    KeyboardConfig.invalidateDevice();
   });
 }
 

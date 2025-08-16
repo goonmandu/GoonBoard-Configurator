@@ -45,21 +45,25 @@ export class KeyboardConfig {
     filters: [{ vendorId: VID, productId: PID }]
     });
     for (const d of devices) {
-    const c = d.collections?.[0];
-    if (c && c.usagePage === 0xFF60 && c.usage === 0x61) {
-        device = d;
-        return;
-    }
+      const c = d.collections?.[0];
+      if (c && c.usagePage === 0xFF60 && c.usage === 0x61) {
+          device = d;
+          return;
+      }
     }
     throw new Error('RawHID interface not found (2B00:B1E5, usagePage 0xFF60, usage 0x61)');
+  }
+
+  static async invalidateDevice() {
+    device = null;
   }
 
   static async fetchFromDevice() {
     return pace(async () => {
       if (!device) await KeyboardConfig.connectDevice();
-      await device.open();
+      if (!device.opened) await device.open();
       const dv = await device.receiveFeatureReport(FETCH_CONFIG_REPORT_ID);
-      await device.close();
+      if (device.opened) await device.close();
 
       const data = new Uint8Array(dv.buffer);
       if (data.length < FULL_CONFIG_SIZE) {
@@ -83,72 +87,73 @@ export class KeyboardConfig {
   static async editKeymap(row, col, code) {
     return pace(async () => {
       if (!device) await KeyboardConfig.connectDevice();
-      await device.open();
+      if (!device.opened) await device.open();
       await device.sendFeatureReport(
         0xFE,
         new Uint8Array([0xA0, row & 0xff, col & 0xff, code & 0xff])
       );
-      await device.close();
+      if (device.opened) await device.close();
     });
   }
 
   static async editActuation(row, col, mm) {
     return pace(async () => {
       if (!device) await KeyboardConfig.connectDevice();
-      await device.open();
+      if (!device.opened) await device.open();
       await device.sendFeatureReport(
         0xFE,
         new Uint8Array([0xA1, row & 0xff, col & 0xff, mm & 0xff])
       );
-      await device.close();
+      if (device.opened) await device.close();
     });
   }
 
   static async editRotary(ctclkw, clkw, pb) {
     return pace(async () => {
       if (!device) await KeyboardConfig.connectDevice();
-      await device.open();
+      if (!device.opened) await device.open();
+      console.log(device);
       await device.sendFeatureReport(
         0xFE,
         new Uint8Array([0xA2, ctclkw & 0xff, clkw & 0xff, pb & 0xff])
       );
-      await device.close();
+      if (device.opened) await device.close();
     });
   }
 
   static async editRapidTrigger(en, th, sc) {
     return pace(async () => {
       if (!device) await KeyboardConfig.connectDevice();
-      await device.open();
+      if (!device.opened) await device.open();
       await device.sendFeatureReport(
         0xFE,
         new Uint8Array([0xD0, en & 0xff, th & 0xff, sc & 0xff])
       );
-      await device.close();
+      if (device.opened) await device.close();
     });
   }
 
   static async editSnapTapA(en, k1, k2) {
     return pace(async () => {
       if (!device) await KeyboardConfig.connectDevice();
-      await device.open();
+      if (!device.opened) await device.open();
       await device.sendFeatureReport(
         0xFE,
         new Uint8Array([0xB0, en & 0xff, k1 & 0xff, k2 & 0xff])
       );
-      await device.close();
+      if (device.opened) await device.close();
     });
   }
 
   static async editSnapTapB(en, k1, k2) {
     return pace(async () => {
       if (!device) await KeyboardConfig.connectDevice();
-      await device.open();
+      if (!device.opened) await device.open();
       await device.sendFeatureReport(
         0xFE,
         new Uint8Array([0xB1, en & 0xff, k1 & 0xff, k2 & 0xff])
       );
-      await device.close();
+      if (device.opened) await device.close();
     });
   }
 }
