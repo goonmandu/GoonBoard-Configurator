@@ -1,6 +1,8 @@
 # GoonBoard Configurator
 Web interface for [GoonBoard-HE](https://github.com/goonmandu/GoonBoard-HE).
 
+This is also hosted on GitHub Pages at https://keeb.goonmandu.com.
+
 ## Local Server (HTTP)
 ```bash
 # install deps
